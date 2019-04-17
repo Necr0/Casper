@@ -1,8 +1,9 @@
-const {series, watch, src, dest} = require('gulp');
+const {task, series, parallel, watch, src, dest} = require('gulp');
 const pump = require('pump');
 
 // gulp plugins and utils
 const livereload = require('gulp-livereload');
+const sass = require("gulp-sass");
 const postcss = require('gulp-postcss');
 const zip = require('gulp-zip');
 const uglify = require('gulp-uglify');
@@ -15,10 +16,6 @@ const cssnano = require('cssnano');
 const customProperties = require('postcss-custom-properties');
 const easyimport = require('postcss-easy-import');
 
-function serve(done) {
-    livereload.listen();
-    done();
-}
 
 const handleError = (done) => {
     return function (err) {
@@ -29,55 +26,59 @@ const handleError = (done) => {
     };
 };
 
-function css(done) {
-    const processors = [
-        easyimport,
-        customProperties({preserve: false}),
-        colorFunction(),
-        autoprefixer({browsers: ['last 2 versions']}),
-        cssnano()
-    ];
 
-    pump([
-        src('assets/css/*.css', {sourcemaps: true}),
-        postcss(processors),
+task("serve", function(done){
+    livereload.listen();
+    done();
+});
+
+task("watch", function(){ watch('assets/css/**', css)});
+
+task("css", function(done){
+    return pump([
+        src(['assets/css/*.scss','!assets/css/_*.scss'], {sourcemaps: true}),
+        sass(),
+        postcss([
+            easyimport,
+            customProperties({preserve: false}),
+            colorFunction(),
+            autoprefixer({browsers: ['last 2 versions']}),
+            cssnano()
+        ]),
         dest('assets/built/', {sourcemaps: '.'}),
         livereload()
     ], handleError(done));
-}
+});
 
-function js(done) {
-    pump([
+task("js", function(done){
+    return pump([
         src('assets/js/*.js', {sourcemaps: true}),
         uglify(),
         dest('assets/built/', {sourcemaps: '.'}),
         livereload()
     ], handleError(done));
-}
+});
 
-function zipper(done) {
-    const targetDir = 'dist/';
+
+
+task("build", parallel("css", "js"));
+task("dev", series("build", "serve", "watch"));
+task("default",series("dev"));
+task("zip", series("build"), function(done){
     const themeName = require('./package.json').name;
-    const filename = themeName + '.zip';
 
-    pump([
+    return pump([
         src([
             '**',
             '!node_modules', '!node_modules/**',
             '!dist', '!dist/**'
         ]),
-        zip(filename),
-        dest(targetDir)
+        zip(themeName + '.zip'),
+        dest('dist/')
     ], handleError(done));
-}
+});
 
-const watcher = () => watch('assets/css/**', css);
-const build = series(css, js);
-const dev = series(build, serve, watcher);
 
-exports.build = build;
-exports.zip = series(build, zipper);
-exports.default = dev;
 
 // release imports
 const path = require('path');
@@ -90,7 +91,7 @@ try {
     config = null;
 }
 
-const REPO = 'TryGhost/Casper';
+const REPO = 'Necr0/Casper';
 const USER_AGENT = 'Casper';
 const CHANGELOG_PATH = path.join(process.cwd(), '.', 'changelog.md');
 
